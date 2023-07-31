@@ -167,3 +167,5 @@ cython_debug/
 log.txt
 blacklist.json
 credentials.json
+done/
+cover/
