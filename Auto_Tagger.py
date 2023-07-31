@@ -13,15 +13,15 @@ from pytube import Search  # search yt-videos
 from mutagen.easyid3 import EasyID3  # set ID3-tags
 from mutagen.id3 import ID3, APIC  # set albumcover
 from alive_progress import alive_bar  # visualize progress
-
+import threading
 
 GENRE = "Unknown"
 
 
 class tag_mode_t(Enum):
-    track = "track"
-    album = "album"
-    playlist = "playlist"
+    track = "Track"
+    album = "Album"
+    playlist = "Playlist"
 
 
 class status_t(Enum):
@@ -193,6 +193,7 @@ class Tagger:
         for filename in os.listdir(path):
             uri = filename[:-4]
             if uri in blacklist["blacklist"]:
+                print("uri in blacklist")
                 continue
             if not filename.endswith(".mp3"):
                 continue
@@ -214,20 +215,25 @@ class Tagger:
                 os.makedirs(path + "/done/")
             os.rename(path + "/" + filename, path + "/done/" + filename)
 
+        File.append_json(data=blacklist, path=path + "/blacklist.json")
         print("\rVerification done")
 
 
 class Downloader:
-    tagger = Tagger()
+    def __init__(self):
+        self.tagger = Tagger()
+        self.event = threading.Event()
 
     def download(self, uri, mode, blacklist):
         log("Download " + mode.value + ": " + uri, "a")
-        tagger = Tagger()
-        tags = tagger.get_tags(uri, mode)
-        with alive_bar(len(tags), calibrate=100) as bar:
-            for key, value in tags.items():
-                bar()
-                self.download_track(tags=value, blacklist=blacklist, tagger=tagger)
+        tags = self.tagger.get_tags(uri, mode)
+        # with alive_bar(len(tags), calibrate=100) as bar:
+        for key, value in tags.items():
+            # bar()
+            self.download_track(tags=value, blacklist=blacklist)
+            self.event.set()
+            self.event.wait()
+            self.event.clear()
 
     # ToDo: download missing tracks, which are to long or extended remix
     def download_track(self, tags, blacklist):
@@ -268,9 +274,17 @@ class Downloader:
             blacklist["whitelist"][uri] = {
                 "title": title,
                 "artist": artist,
-                "length": str(int(time_s / 60)) + ":" + str(time_s % 60),
+                "length": self.convert_to_mm_ss(time_s),
                 "UID": "",
             }
+
+    @staticmethod
+    def convert_to_mm_ss(time_s):
+        m = int(time_s / 60)
+        s = int(time_s % 60)
+        mm = ("0" if m < 10 else "") + str(m)
+        ss = ("0" if s < 10 else "") + str(s)
+        return mm + ":" + ss
 
 
 def log(string, mode="a"):
@@ -312,7 +326,6 @@ def main():
         )
     if args["verify"]:
         downloader.tagger.verify_tags(os.getcwd(), blacklist)
-        File.append_json(data=blacklist, path="blacklist.json")
     return
 
 
