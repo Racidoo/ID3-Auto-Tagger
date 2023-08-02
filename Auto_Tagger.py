@@ -12,7 +12,8 @@ from pytube import YouTube  # download yt-videos
 from pytube import Search  # search yt-videos
 from mutagen.easyid3 import EasyID3  # set ID3-tags
 from mutagen.id3 import ID3, APIC  # set albumcover
-from alive_progress import alive_bar  # visualize progress
+
+# from alive_progress import alive_bar  # visualize progress
 import threading
 
 GENRE = "Unknown"
@@ -34,7 +35,7 @@ class File:
     @staticmethod
     def get_json(path):
         if not os.path.exists(path):
-            Tagger.append_json(path, {"blacklist": {}, "whitelist": {}})
+            File.append_json(path=path, data={"blacklist": {}, "whitelist": {}})
         file = open(path, "r")
         data = json.load(file)
         file.close()
@@ -49,6 +50,9 @@ class File:
 
 class Tagger:
     def __init__(self):
+        self.verify_path = os.getcwd()
+        self.destination = os.getcwd() + "/done/"
+
         if not os.path.exists("credentials.json"):
             File.append_json(data={"cid": "", "secret": ""}, path="credentials.json")
         credentials = File.get_json(path="credentials.json")
@@ -66,7 +70,8 @@ class Tagger:
                 album_tags = self.extract_album_tags(
                     json.loads(json.dumps(self.sp.album(json_items["album"]["id"])))
                 )
-                return self.extract_tags(json_items, album_tags)
+                new_playlist = {uri: self.extract_tags(json_items, album_tags)}
+                return new_playlist
             case tag_mode_t.album:
                 json_items = json.loads(json.dumps(self.sp.album(uri)))
                 album_tags = self.extract_album_tags(json_items)
@@ -102,16 +107,16 @@ class Tagger:
         for i in json_album["artists"]:
             album_artist.append(i["name"])
 
-        tags["albumartist"] = ";".join(album_artist)
+        tags["albumartist"] = "; ".join(album_artist)
         tags["organization"] = json_album["label"]
         tags["copyright"] = json_album["copyrights"][0]["text"]
         tags["date"] = json_album["release_date"]
         tags["cover"] = json_album["images"][1]["url"]
         tags["album"] = json_album["name"]
 
-        try:
+        if "genre" in tags:
             tags["genre"] = (json_album["genres"][0],)
-        except:
+        else:
             tags["genre"] = GENRE
         return tags
 
@@ -138,11 +143,14 @@ class Tagger:
         return tags
 
     @staticmethod
-    def assign_id3_tag(uri, tags):
+    def convert_to_mp3(uri):
         if os.path.isfile(uri + ".mp3") == False:
+            print()
             os.system("ffmpeg -i " + uri + ".mp4 " + uri + ".mp3 -loglevel warning")
             os.system("rm " + uri + ".mp4")
 
+    @staticmethod
+    def assign_id3_tag(uri, tags):
         song = EasyID3(uri + ".mp3")
         status = status_t.unchanged
         for tag, value in tags.items():
@@ -188,9 +196,9 @@ class Tagger:
         song.save()
         return status_t.new
 
-    def verify_tags(self, path, blacklist):
-        log("Verifying track in path: " + path, "a")
-        for filename in os.listdir(path):
+    def verify_tags(self, blacklist):
+        log("Verifying track in path: " + self.verify_path, "a")
+        for filename in os.listdir(self.verify_path):
             uri = filename[:-4]
             if uri in blacklist["blacklist"]:
                 print("uri in blacklist")
@@ -198,7 +206,7 @@ class Tagger:
             if not filename.endswith(".mp3"):
                 continue
             print("\rVerifying ", filename, end="")
-            tags = self.get_tags(uri=uri)
+            tags = self.get_tags(uri=uri)[uri]
             if not (
                 self.assign_id3_tag(uri, tags) == status_t.unchanged
                 and self.set_album_cover(uri, tags["cover"]) == status_t.unchanged
@@ -211,12 +219,12 @@ class Tagger:
             }
             if uri in blacklist["whitelist"]:
                 blacklist["whitelist"].pop(uri)
-            if not os.path.exists(path + "/done/"):
-                os.makedirs(path + "/done/")
-            os.rename(path + "/" + filename, path + "/done/" + filename)
+            if not os.path.exists(self.destination):
+                os.makedirs(self.destination)
+            os.rename(self.verify_path + "/" + filename, self.destination + filename)
 
-        File.append_json(data=blacklist, path=path + "/blacklist.json")
-        print("\rVerification done")
+        File.append_json(data=blacklist, path=self.verify_path + "/blacklist.json")
+        # print("\rVerification done")
 
 
 class Downloader:
@@ -224,16 +232,23 @@ class Downloader:
         self.tagger = Tagger()
         self.event = threading.Event()
 
-    def download(self, uri, mode, blacklist):
+    def downloader_thread(self, event, value, blacklist):
+        self.event = event
+        self.download_track(tags=value, blacklist=blacklist)
+        File.append_json(data=blacklist, path=self.tagger.verify_path + "/blacklist.json")
+        # self.tagger.verify_tags(blacklist=blacklist)
+        # self.event.set()
+
+    def download(self, event, uri, mode, blacklist):
         log("Download " + mode.value + ": " + uri, "a")
         tags = self.tagger.get_tags(uri, mode)
         # with alive_bar(len(tags), calibrate=100) as bar:
         for key, value in tags.items():
             # bar()
             self.download_track(tags=value, blacklist=blacklist)
-            self.event.set()
-            self.event.wait()
-            self.event.clear()
+            self.tagger.verify_tags(blacklist=blacklist)
+            # event.set()
+            # print("backend event.set()")
 
     # ToDo: download missing tracks, which are to long or extended remix
     def download_track(self, tags, blacklist):
@@ -248,6 +263,7 @@ class Downloader:
         time_s = int(tags["duration_ms"] / 1000)
         search = artist + " - " + title
         s = Search(search)
+        self.event.set()
         for song in s.results:
             matches = re.finditer(regex, str(song))
             for matchNum, match in enumerate(matches, start=1):
@@ -259,13 +275,17 @@ class Downloader:
                         yt.streams.filter(only_audio=True).first().download(
                             os.getcwd(), uri + ".mp4"
                         )
-
+                        self.event.set()
+                        Tagger.convert_to_mp3(uri=uri)
+                        self.event.set()
                         try:
                             self.tagger.assign_id3_tag(uri, tags)
+                            self.event.set()
                         except:
                             log("Could not find " + uri + "(" + tags["title"] + ")")
                         try:
                             self.tagger.set_album_cover(uri, tags["cover"])
+                            self.event.set()
                         except:
                             log("Could not assign album cover: " + tags["title"])
                         return
@@ -288,6 +308,7 @@ class Downloader:
 
 
 def log(string, mode="a"):
+    print(string)
     with open("log.txt", mode) as file:
         file.write(string + "\n")
 
