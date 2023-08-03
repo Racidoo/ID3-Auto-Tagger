@@ -46,6 +46,12 @@ class File:
             file.seek(0)
             json.dump(data, file, sort_keys=True, indent=4)
 
+    @staticmethod
+    def check_dir(path):
+        if not os.path.exists(path):
+            os.mkdir(path)
+        return path
+
 
 class Tagger:
     def __init__(self):
@@ -201,9 +207,7 @@ class Tagger:
 
         log(uri + ": Set new album cover")
         response = requests.get(url, stream=True)
-        if not os.path.exists("cover"):
-            os.mkdir("cover")
-        with open(os.path.join("cover", uri, ".jpg"), "wb") as out_file:
+        with open(os.path.join(File.check_dir(), uri, ".jpg"), "wb") as out_file:
             shutil.copyfileobj(response.raw, out_file)
         del response
         with open(os.path.join("cover", uri, ".jpg"), "rb") as album_cover:
@@ -242,9 +246,10 @@ class Tagger:
             }
             if uri in blacklist["whitelist"]:
                 blacklist["whitelist"].pop(uri)
-            if not os.path.exists(self.destination):
-                os.makedirs(self.destination)
-            os.rename(self.verify_path + "/" + filename, self.destination + filename)
+            os.rename(
+                os.path.join(self.verify_path, filename),
+                os.path.join(File.check_dir(self.destination), filename),
+            )
 
         File.append_json(data=blacklist, path=self.verify_path + "/blacklist.json")
         # print("\rVerification done")
@@ -259,7 +264,7 @@ class Downloader:
         self.event = event
         self.download_track(tags=value, blacklist=blacklist)
         File.append_json(
-            data=blacklist, path=self.tagger.verify_path + "/blacklist.json"
+            data=blacklist, path=os.path.join(self.tagger.verify_path, "blacklist.json")
         )
         # self.tagger.verify_tags(blacklist=blacklist)
         # self.event.set()

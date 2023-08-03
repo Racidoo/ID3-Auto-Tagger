@@ -168,7 +168,9 @@ class App(customtkinter.CTk):
         self.progressbars = []
         sorted_files = sorted(
             os.listdir(self.settings.song_path),
-            key=lambda file: self.get_album_tag(self.settings.song_path + file),
+            key=lambda file: self.get_album_tag(
+                os.path.join(self.settings.song_path, file)
+            ),
         )
         # draw header
         for col, label_text in enumerate(self.settings.labels_text):
@@ -280,7 +282,11 @@ class App(customtkinter.CTk):
 
     def select_frame_by_name(self, name):
         # Set button colors for selected button
-        buttons = [self.download_sp_button, self.settings_button]
+        buttons = [
+            self.download_sp_button,
+            self.research_existing_button,
+            self.settings_button,
+        ]
         button_names = ["download_sp", "research_existing", "settings"]
         for button, button_name in zip(buttons, button_names):
             fg_color = ("gray75", "gray25") if name == button_name else "transparent"
@@ -399,9 +405,7 @@ class App(customtkinter.CTk):
         progress.stop()
 
     def research_tracks(self, src, dest):
-        if not os.path.exists(src):
-            os.mkdir(src)
-        for file in os.listdir(src):
+        for file in os.listdir(File.check_dir(src)):
             if file.lower().endswith(".mp3"):
                 fullpath = os.path.join(src, file)
                 song = ID3(fullpath)
