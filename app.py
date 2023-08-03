@@ -13,8 +13,8 @@ class Settings:
     def __init__(self):
         self.blacklist_path = "blacklist.json"
         self.dir = os.getcwd()
-        self.song_path = os.getcwd() + "/done/"
-        self.cover_path = os.getcwd() + "/cover/"
+        self.song_path = os.path.join(os.getcwd(), "done")
+        self.cover_path = os.path.join(os.getcwd(), "cover")
         self.labels_text = [
             "Select",
             "Cover",

@@ -50,7 +50,7 @@ class File:
 class Tagger:
     def __init__(self):
         self.verify_path = os.getcwd()
-        self.destination = os.getcwd() + "/done/"
+        self.destination = os.path.join(os.getcwd(), "done")
 
         if not os.path.exists("credentials.json"):
             File.append_json(data={"cid": "", "secret": ""}, path="credentials.json")
@@ -201,12 +201,12 @@ class Tagger:
 
         log(uri + ": Set new album cover")
         response = requests.get(url, stream=True)
-        if not os.path.exists("cover/"):
-            os.makedirs("cover/")
-        with open("cover/" + uri + ".jpg", "wb") as out_file:
+        if not os.path.exists("cover"):
+            os.mkdir("cover")
+        with open(os.path.join("cover", uri, ".jpg"), "wb") as out_file:
             shutil.copyfileobj(response.raw, out_file)
         del response
-        with open("cover/" + uri + ".jpg", "rb") as album_cover:
+        with open(os.path.join("cover", uri, ".jpg"), "rb") as album_cover:
             song.add(
                 APIC(
                     encoding=3,
