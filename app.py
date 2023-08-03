@@ -1,15 +1,12 @@
 import tkinter
 import customtkinter
 import os
-from Auto_Tagger import Tagger, Downloader, File, tag_mode_t
+import requests
 import threading
+from Auto_Tagger import Tagger, Downloader, File, tag_mode_t
 from PIL import Image
 from mutagen.id3 import ID3
 from mutagen.mp3 import MP3
-from threading import Thread
-
-# from io import BytesIO
-import requests
 
 
 class Settings:
@@ -28,6 +25,7 @@ class Settings:
             "Length",
             "Progress",
         ]
+        self.research_src = os.path.join(self.dir, "researched")
 
 
 class App(customtkinter.CTk):
@@ -37,7 +35,7 @@ class App(customtkinter.CTk):
         self.settings = Settings()
         self.tagger = Tagger()
         self.downloader = Downloader()
-        self.event = threading.Event()
+        self.download_event = threading.Event()
         super().__init__()
 
         self.update_blacklist()
@@ -54,8 +52,9 @@ class App(customtkinter.CTk):
         self.draw_sidebar()
         self.draw_footer()
         self.draw_scroll_frame()
+        self.draw_research_frame()
         self.draw_settings_frame()
-        self.select_frame_by_name("home")
+        self.select_frame_by_name("download_sp")
 
     def draw_sidebar(self):
         # create sidebar frame with widgets
@@ -74,9 +73,9 @@ class App(customtkinter.CTk):
             font=customtkinter.CTkFont(size=20, weight="bold"),
         )
         self.logo_label.grid(row=0, column=0, padx=20, pady=(20, 10))
-        self.home_button = customtkinter.CTkButton(
+        self.download_sp_button = customtkinter.CTkButton(
             self.sidebar_frame,
-            command=lambda: self.select_frame_by_name("home"),
+            command=lambda: self.select_frame_by_name("download_sp"),
             text="Download songs",
             fg_color="transparent",
             text_color=("gray10", "gray90"),
@@ -86,7 +85,20 @@ class App(customtkinter.CTk):
             corner_radius=0,
             border_spacing=10,
         )
-        self.home_button.grid(row=1, column=0, sticky="ew")
+        self.download_sp_button.grid(row=1, column=0, sticky="ew")
+        self.research_existing_button = customtkinter.CTkButton(
+            self.sidebar_frame,
+            command=lambda: self.select_frame_by_name("research_existing"),
+            text="Research URI",
+            fg_color="transparent",
+            text_color=("gray10", "gray90"),
+            hover_color=("gray70", "gray30"),
+            anchor="w",
+            height=40,
+            corner_radius=0,
+            border_spacing=10,
+        )
+        self.research_existing_button.grid(row=2, sticky="ew")
         self.settings_button = customtkinter.CTkButton(
             self.sidebar_frame,
             command=lambda: self.select_frame_by_name("settings"),
@@ -99,7 +111,7 @@ class App(customtkinter.CTk):
             corner_radius=0,
             border_spacing=10,
         )
-        self.settings_button.grid(row=2, column=0, sticky="ew")
+        self.settings_button.grid(row=5, column=0, sticky="ew")
 
     def draw_footer(self):
         # Footer
@@ -211,6 +223,17 @@ class App(customtkinter.CTk):
         # self.downloader.event.set()
         # print("frontend event.set()")
 
+    def draw_research_frame(self):
+        self.research_existing_frame = customtkinter.CTkFrame(self, corner_radius=10)
+        self.research_button = customtkinter.CTkButton(
+            self.research_existing_frame,
+            command=lambda: self.research_tracks(
+                self.settings.research_src, self.settings.dir
+            ),
+            text="Research existing songs",
+        )
+        self.research_button.grid(sticky="nsew")
+
     def draw_settings_frame(self):
         self.keep_cover = customtkinter.BooleanVar()
         self.settings_frame = customtkinter.CTkFrame(self, corner_radius=0)
@@ -256,38 +279,26 @@ class App(customtkinter.CTk):
         self.entry_cover_path.grid(row=9, padx=5, sticky="nsew")
 
     def select_frame_by_name(self, name):
-        # set button color for selected button
-        self.home_button.configure(
-            fg_color=("gray75", "gray25") if name == "home" else "transparent"
-        )
-        self.settings_button.configure(
-            fg_color=("gray75", "gray25") if name == "settings" else "transparent"
-        )
-        # self.frame_3_button.configure(fg_color=("gray75", "gray25") if name == "frame_3" else "transparent")
+        # Set button colors for selected button
+        buttons = [self.download_sp_button, self.settings_button]
+        button_names = ["download_sp", "research_existing", "settings"]
+        for button, button_name in zip(buttons, button_names):
+            fg_color = ("gray75", "gray25") if name == button_name else "transparent"
+            button.configure(fg_color=fg_color)
 
-        # show selected frame
-        if name == "home":
-            self.scroll_frame.grid(
-                row=0,
-                column=1,
-                padx=self.PADDING_FRAME_X,
-                pady=self.PADDING_FRAME_Y,
-                sticky="nsew",
-            )
-        else:
-            self.scroll_frame.grid_forget()
-        if name == "settings":
-            self.settings_frame.grid(
-                row=0,
-                column=1,
-                padx=self.PADDING_FRAME_X,
-                pady=self.PADDING_FRAME_Y,
-                sticky="nsew",
-            )
-        else:
-            self.settings_frame.grid_forget()
-        # if name == "frame_3":
-        # else:
+        # Show selected frame
+        frames = [self.scroll_frame, self.research_existing_frame, self.settings_frame]
+        for frame, frame_name in zip(frames, button_names):
+            if name == frame_name:
+                frame.grid(
+                    row=0,
+                    column=1,
+                    padx=self.PADDING_FRAME_X,
+                    pady=self.PADDING_FRAME_Y,
+                    sticky="nsew",
+                )
+            else:
+                frame.grid_forget()
 
     def draw_song_table(self, titles):
         for i, text in enumerate(titles):
@@ -306,26 +317,20 @@ class App(customtkinter.CTk):
             # titles = list(self.tagger.get_tags(self.entry.get(), mode).keys())
             # self.draw_song_table(titles)
             i = 1
-            # for key, value in self.tagger.get_tags(self.entry.get(), mode).items():
-            for key, value in self.tagger.get_tags(
-                "2LM2u1sZuzLRsRSspo9hTe", mode
-            ).items():
+            for key, value in self.tagger.get_tags(self.entry.get(), mode).items():
+                # for key, value in self.tagger.get_tags(
+                #     "2LM2u1sZuzLRsRSspo9hTe", mode).items():
                 # print(key)
-                # threading.Thread(
-                #     target=self.downloader.downloader_thread, args=[self.event]
-                # ).start()
                 threading.Thread(
                     target=self.downloader.downloader_thread,
-                    args=[self.event, value, self.blacklist],
+                    args=[self.download_event, value, self.blacklist],
                 ).start()
                 threading.Thread(target=self.refresher_thread, args=[i, value]).start()
                 i += 1
 
-            # wait for all threads to exit
-            # for t in threading.enumerate():
-            #     if t != threading.current_thread():
-            #         t.join()
-            print("download complete")
+            # print("download complete")
+            # time.sleep()
+
         self.tagger.verify_tags(blacklist=self.blacklist)
 
     def toggle_verify_only(self):
@@ -381,8 +386,8 @@ class App(customtkinter.CTk):
         # progress.start()
         progress["maximum"] = 5
         for j in range(5):
-            if self.event.wait(20):
-                self.event.clear()
+            if self.download_event.wait(10):
+                self.download_event.clear()
                 print("downloaded", i)
                 # progress.configure(mode="determinate")
                 progress.set(j)
@@ -391,8 +396,23 @@ class App(customtkinter.CTk):
                 print("Timed out", i)
                 progress.configure(progress_color="red")
                 break
-
         progress.stop()
+
+    def research_tracks(self, src, dest):
+        if not os.path.exists(src):
+            os.mkdir(src)
+        for file in os.listdir(src):
+            if file.lower().endswith(".mp3"):
+                fullpath = os.path.join(src, file)
+                song = ID3(fullpath)
+                track = MP3(fullpath)
+                res = self.tagger.research_uri(
+                    track=song["TIT2"].text[0],
+                    artist=song["TPE1"].text[0],
+                    length=track.info.length,
+                )
+                if res != False:
+                    os.rename(fullpath, os.path.join(dest, res + ".mp3"))
 
 
 if __name__ == "__main__":

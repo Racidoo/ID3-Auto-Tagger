@@ -4,6 +4,7 @@ import json  # save blacklist
 import requests  # download albumcover
 import shutil  # download albumcover
 import argparse  # additional arguments
+import threading
 from pprint import pprint
 from enum import Enum
 import spotipy  # spotify meta-data
@@ -13,8 +14,6 @@ from pytube import Search  # search yt-videos
 from mutagen.easyid3 import EasyID3  # set ID3-tags
 from mutagen.id3 import ID3, APIC  # set albumcover
 
-# from alive_progress import alive_bar  # visualize progress
-import threading
 
 GENRE = "Unknown"
 
@@ -62,6 +61,30 @@ class Tagger:
             )
         )
         return
+
+    def research_uri(self, artist, track, length):
+        query = f"track: {track},artist:{artist}"
+        pprint(query)
+        request = json.loads(json.dumps(self.sp.search(query, type="track")))
+        for i in request["tracks"]["items"]:
+            if (
+                (i["name"] in track or track in i["name"])
+                and (
+                    artist in i["artists"][0]["name"]
+                    or i["artists"][0]["name"] in artist
+                )
+                and (
+                    length <= i["duration_ms"] + 2000
+                    or length >= i["duration_ms"] - 2000
+                )
+            ):
+                return i["id"]
+            else:
+                print("\t", track, " | ", artist, " | ", length)
+                print(
+                    i["name"], " | ", i["artists"][0]["name"], " | ", i["duration_ms"]
+                )
+        return False
 
     def get_tags(self, uri: str, mode: tag_mode_t = tag_mode_t.track) -> dict:
         match mode:
@@ -235,7 +258,9 @@ class Downloader:
     def downloader_thread(self, event, value, blacklist):
         self.event = event
         self.download_track(tags=value, blacklist=blacklist)
-        File.append_json(data=blacklist, path=self.tagger.verify_path + "/blacklist.json")
+        File.append_json(
+            data=blacklist, path=self.tagger.verify_path + "/blacklist.json"
+        )
         # self.tagger.verify_tags(blacklist=blacklist)
         # self.event.set()
 
@@ -352,3 +377,18 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # tagger = Tagger()
+    # dir = "test/"
+    # for file in os.listdir(dir):
+    #     if file.lower().endswith(".mp3"):
+    #         fullpath = os.path.join(dir, file)
+    #         song = EasyID3(fullpath)
+    #         track = MP3(fullpath)
+    #         res = tagger.research_uri(
+    #             track=song["title"][0],
+    #             artist=song["artist"][0],
+    #             album=song["album"][0],
+    #             length=track.info.length,
+    #         )
+    #         if res != False:
+    #             os.rename(fullpath, "test/done/" + res + ".mp3")
