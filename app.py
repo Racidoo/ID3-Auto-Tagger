@@ -3,6 +3,7 @@ import customtkinter
 import os
 import requests
 import threading
+import re
 from Auto_Tagger import Tagger, Downloader, File, tag_mode_t
 from io import BytesIO
 from PIL import Image
@@ -96,6 +97,7 @@ class ScrollFrame(customtkinter.CTkScrollableFrame):
             customtkinter.CTkLabel(self, text=label_text).grid(
                 row=0, column=col, padx=5, pady=5, sticky="w"
             )
+
     # def add_Songlabel():
 
     # SongLabel(self.scroll_frame)
@@ -199,16 +201,15 @@ class App(customtkinter.CTk):
         self.footer_frame.grid_columnconfigure(0, weight=2)
         self.entry = customtkinter.CTkEntry(
             self.footer_frame,
-            placeholder_text="Enter Spotify-URI from track, album or playlist",
-            # placeholder_text="2LM2u1sZuzLRsRSspo9hTe",
+            placeholder_text="Enter URL from Spotify or YouTube",
         )
         self.entry.grid(row=0, column=0, padx=(20, 0), pady=(20, 20), sticky="nsew")
-        self.download_type_button = customtkinter.CTkSegmentedButton(self.footer_frame)
-        self.download_type_button.grid(
-            row=0, column=2, padx=(20, 0), pady=(20, 20), sticky="nsew"
-        )
-        self.download_type_button.configure(values=["album", "playlist", "track"])
-        self.download_type_button.set("playlist")
+        # self.download_type_button = customtkinter.CTkSegmentedButton(self.footer_frame)
+        # self.download_type_button.grid(
+        #     row=0, column=2, padx=(20, 0), pady=(20, 20), sticky="nsew"
+        # )
+        # self.download_type_button.configure(values=["album", "playlist", "track"])
+        # self.download_type_button.set("playlist")
         self.verify_only = customtkinter.BooleanVar()
         self.verify_switch = customtkinter.CTkSwitch(
             self.footer_frame,
@@ -351,24 +352,25 @@ class App(customtkinter.CTk):
     def submit_button_event(self):
         self.update_blacklist()
         if not self.verify_switch.get():
-            mode = tag_mode_t[self.download_type_button.get()]
-            i = 1
-            for key, value in self.tagger.get_tags(self.entry.get(), mode).items():
-                threading.Thread(
-                    target=self.downloader.downloader_thread,
-                    args=[self.download_event, value, self.blacklist],
-                ).start()
-                threading.Thread(target=self.refresher_thread, args=[i, value]).start()
-                i += 1
+            # mode = tag_mode_t[self.download_type_button.get()]
+            # i = 1
+            # for key, value in self.tagger.get_tags(self.entry.get(), mode).items():
+            #     threading.Thread(
+            #         target=self.downloader.downloader_thread,
+            #         args=[self.download_event, value, self.blacklist],
+            #     ).start()
+            #     threading.Thread(target=self.refresher_thread, args=[i, value]).start()
+            #     i += 1
+            print(self.extract_from_url(self.entry.get()))
 
         self.tagger.verify_tags(blacklist=self.blacklist)
 
     def toggle_verify_only(self):
         verify_only = self.verify_switch.get()
         self.entry.configure(state="disabled" if verify_only else "normal")
-        self.download_type_button.configure(
-            state="disabled" if verify_only else "normal"
-        )
+        # self.download_type_button.configure(
+        #     state="disabled" if verify_only else "normal"
+        # )
 
     def toggle_keep_cover(self):
         keep_cover = self.keep_cover_switch.get()
@@ -409,6 +411,29 @@ class App(customtkinter.CTk):
                 )
                 if res != False:
                     os.rename(fullpath, os.path.join(dest, res + ".mp3"))
+
+    @staticmethod
+    def extract_from_url(url):
+        spotify_pattern_playlist = r'https://open\.spotify\.com/(?:intl-[a-z]{2}/)?playlist/([\w\d]+)'
+        spotify_pattern_album = r'https://open\.spotify\.com/(?:intl-[a-z]{2}/)?album/([\w\d]+)'
+        spotify_pattern_track = r'https://open\.spotify\.com/(?:intl-[a-z]{2}/)?track/([\w\d]+)'
+        youtube_pattern = r'https://www\.youtube\.com/watch\?v=([\w\d_-]+)'
+
+        spotify_match_playlist = re.match(spotify_pattern_playlist, url)
+        spotify_match_album = re.match(spotify_pattern_album, url)
+        spotify_match_track = re.match(spotify_pattern_track, url)
+        youtube_match = re.match(youtube_pattern, url)
+
+        if spotify_match_playlist:
+            return "Spotify", "playlist", spotify_match_playlist.group(1)
+        elif spotify_match_album:
+            return "Spotify", "album", spotify_match_album.group(1)
+        elif spotify_match_track:
+            return "Spotify", "track", spotify_match_track.group(1)
+        elif youtube_match:
+            return "YouTube", youtube_match.group(1)
+        else:
+            return "Unknown", None
 
 
 if __name__ == "__main__":
