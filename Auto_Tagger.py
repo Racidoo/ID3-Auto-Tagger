@@ -7,7 +7,7 @@ import argparse  # additional arguments
 import threading
 from pprint import pprint
 from enum import Enum
-import spotipy  # spotify meta-data
+from spotipy.client import Spotify  # spotify meta-data
 from spotipy.oauth2 import SpotifyClientCredentials  # Spotify API Credentials
 from pytube import YouTube  # download yt-videos
 from pytube import Search  # search yt-videos
@@ -61,7 +61,7 @@ class Tagger:
         if not os.path.exists("credentials.json"):
             File.append_json(data={"cid": "", "secret": ""}, path="credentials.json")
         credentials = File.get_json(path="credentials.json")
-        self.sp = spotipy.Spotify(
+        self.sp = Spotify(
             client_credentials_manager=SpotifyClientCredentials(
                 client_id=credentials["cid"], client_secret=credentials["secret"]
             )
@@ -156,7 +156,7 @@ class Tagger:
             artist.append(i["name"])
 
         tags["title"] = json_track["name"]
-        tags["artist"] = ";".join(artist)
+        tags["artist"] = "; ".join(artist)
         tags["discnumber"] = str(json_track["disc_number"])
         tags["duration_ms"] = json_track["duration_ms"]
         tags["id"] = json_track["id"]
@@ -199,18 +199,20 @@ class Tagger:
         song.save()
         return status
 
-    @staticmethod
-    def set_album_cover(uri, url):
+    def set_album_cover(self, uri, url):
         song = ID3(uri + ".mp3")
         if song.getall("APIC"):
             return status_t.unchanged
 
-        log(uri + ": Set new album cover")
         response = requests.get(url, stream=True)
-        with open(os.path.join(File.check_dir(), uri, ".jpg"), "wb") as out_file:
+        with open(
+            os.path.join(File.check_dir("cover"), uri) + ".jpg", "wb"
+        ) as out_file:
             shutil.copyfileobj(response.raw, out_file)
         del response
-        with open(os.path.join("cover", uri, ".jpg"), "rb") as album_cover:
+        with open(
+            os.path.join(self.verify_path, "cover", uri) + ".jpg", "rb"
+        ) as album_cover:
             song.add(
                 APIC(
                     encoding=3,
@@ -221,6 +223,7 @@ class Tagger:
                 )
             )
         song.save()
+        log(uri + ": Set new album cover")
         return status_t.new
 
     def verify_tags(self, blacklist):
@@ -269,16 +272,13 @@ class Downloader:
         # self.tagger.verify_tags(blacklist=blacklist)
         # self.event.set()
 
-    def download(self, event, uri, mode, blacklist):
+    def download(self,  uri, mode, blacklist):
         log("Download " + mode.value + ": " + uri, "a")
         tags = self.tagger.get_tags(uri, mode)
-        # with alive_bar(len(tags), calibrate=100) as bar:
         for key, value in tags.items():
-            # bar()
             self.download_track(tags=value, blacklist=blacklist)
             self.tagger.verify_tags(blacklist=blacklist)
-            # event.set()
-            # print("backend event.set()")
+            
 
     # ToDo: download missing tracks, which are to long or extended remix
     def download_track(self, tags, blacklist):

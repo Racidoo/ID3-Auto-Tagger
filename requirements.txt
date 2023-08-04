@@ -1,0 +1,8 @@
+customtkinter==5.2.0
+ffmpeg==1.4
+mutagen==1.46.0
+Pillow==10.0.0
+Pillow==10.0.0
+pytube==15.0.0
+Requests==2.31.0
+spotipy==2.23.0
