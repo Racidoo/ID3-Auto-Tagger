@@ -28,6 +28,7 @@ class Settings:
             "Progress",
         ]
         self.research_src = os.path.join(self.dir, "researched")
+        self.timeout = 10
 
 
 class SongLabel(customtkinter.CTkFrame):
@@ -152,7 +153,7 @@ class App(customtkinter.CTk):
     def draw_sidebar(self):
         # Create a list of button names and their corresponding texts
         buttons_info = [
-            ("download_sp", "Download songs from Spotify"),
+            ("download_sp", "Download songs"),
             ("view_downloaded", "View downloaded songs"),
             ("research_existing", "Research URI"),
             ("settings", "Settings"),
@@ -199,17 +200,18 @@ class App(customtkinter.CTk):
         )
         # self.footer_frame.grid_configure(column=4, row=1)
         self.footer_frame.grid_columnconfigure(0, weight=2)
+        self.download_progress = customtkinter.CTkProgressBar(
+            self.footer_frame, mode="determinate"
+        )
+        self.download_progress.grid(
+            row=0, column=0, padx=(20, 0), pady=(0, 0), sticky="ew"
+        )
         self.entry = customtkinter.CTkEntry(
             self.footer_frame,
             placeholder_text="Enter URL from Spotify or YouTube",
         )
-        self.entry.grid(row=0, column=0, padx=(20, 0), pady=(20, 20), sticky="nsew")
-        # self.download_type_button = customtkinter.CTkSegmentedButton(self.footer_frame)
-        # self.download_type_button.grid(
-        #     row=0, column=2, padx=(20, 0), pady=(20, 20), sticky="nsew"
-        # )
-        # self.download_type_button.configure(values=["album", "playlist", "track"])
-        # self.download_type_button.set("playlist")
+        self.entry.grid(row=1, column=0, padx=(20, 0), pady=(0, 0), sticky="ew")
+
         self.verify_only = customtkinter.BooleanVar()
         self.verify_switch = customtkinter.CTkSwitch(
             self.footer_frame,
@@ -219,6 +221,7 @@ class App(customtkinter.CTk):
         )
         self.verify_switch.grid(
             row=0,
+            rowspan=2,
             column=3,
             padx=(20, 20),
             pady=(20, 20),
@@ -233,7 +236,7 @@ class App(customtkinter.CTk):
             command=self.submit_button_event,
         )
         self.submit_button.grid(
-            row=0, column=4, padx=(20, 20), pady=(20, 20), sticky="nsew"
+            row=0, rowspan=2, column=4, padx=(20, 20), pady=(20, 20), sticky="nsew"
         )
 
     def draw_sp_download_frame(self):
@@ -338,7 +341,6 @@ class App(customtkinter.CTk):
         ]
         for frame, frame_name in zip(frames, self.__buttons.keys()):
             if name == frame_name:
-                print("select frame", name, frame_name)
                 frame.grid(
                     row=0,
                     column=1,
@@ -350,27 +352,52 @@ class App(customtkinter.CTk):
                 frame.grid_forget()
 
     def submit_button_event(self):
+        self.download_progress.set(0)
         self.update_blacklist()
         if not self.verify_switch.get():
-            # mode = tag_mode_t[self.download_type_button.get()]
-            # i = 1
-            # for key, value in self.tagger.get_tags(self.entry.get(), mode).items():
-            #     threading.Thread(
-            #         target=self.downloader.downloader_thread,
-            #         args=[self.download_event, value, self.blacklist],
-            #     ).start()
-            #     threading.Thread(target=self.refresher_thread, args=[i, value]).start()
-            #     i += 1
-            print(self.extract_from_url(self.entry.get()))
+            link_type, match_type, id = Downloader.extract_from_url(self.entry.get())
+            if link_type == "YouTube":
+                # Do something, will be implemented later
+                print("")
+            elif link_type == "Spotify":
+                i = 1
+                threads = []
+                for j, (key, value) in enumerate(
+                    self.tagger.get_tags(uri=id, mode=tag_mode_t[match_type]).items(),
+                    start=1,
+                ):
+                    threads.append(
+                        threading.Thread(
+                            target=self.downloader.downloader_thread,
+                            args=[self.download_event, value, self.blacklist],
+                        )
+                    )
+                    threads.append(
+                        threading.Thread(target=self.refresher_thread, args=[j, value]),
+                    )
+                    i += 1
+                # Start all threads
+                for thread in threads:
+                    thread.start()
 
-        self.tagger.verify_tags(blacklist=self.blacklist)
+                # Overwatch for download and refresher-threads to execute verify_tags() AFTER everything was downloaded
+                def watch_threads(threads):
+                    step = int(1000 / (len(threads) + 1))
+                    # self.download_progress.configure(determinate_speed = step)
+                    progress = 0
+                    for thread in threads:
+                        progress += step
+                        thread.join(timeout=None)
+                        self.download_progress.set(progress*0.001)
+                    progress+=step
+                    self.download_progress.set(progress)
+                    self.tagger.verify_tags(blacklist=self.blacklist)
+
+                threading.Thread(target=watch_threads, args=[threads]).start()
 
     def toggle_verify_only(self):
         verify_only = self.verify_switch.get()
         self.entry.configure(state="disabled" if verify_only else "normal")
-        # self.download_type_button.configure(
-        #     state="disabled" if verify_only else "normal"
-        # )
 
     def toggle_keep_cover(self):
         keep_cover = self.keep_cover_switch.get()
@@ -386,9 +413,9 @@ class App(customtkinter.CTk):
         progress = customtkinter.CTkProgressBar(self.sp_download_frame)
         progress.grid(row=i, column=7, padx=5, pady=5, sticky="w")
         progress.set(0)
-        progress["maximum"] = 10
+        # progress["maximum"] = 10
         for j in range(2, 12, 2):
-            if self.download_event.wait(10):
+            if self.download_event.wait(self.settings.timeout):
                 self.download_event.clear()
                 print("downloaded", i, ": ", j * 0.1)
                 progress.set((j) * 0.1)
@@ -396,7 +423,7 @@ class App(customtkinter.CTk):
                 print("Timed out", i)
                 progress.configure(progress_color="red")
                 break
-        progress.stop()
+        # progress.stop()
 
     def research_tracks(self, src, dest):
         for file in os.listdir(File.check_dir(src)):
@@ -411,29 +438,6 @@ class App(customtkinter.CTk):
                 )
                 if res != False:
                     os.rename(fullpath, os.path.join(dest, res + ".mp3"))
-
-    @staticmethod
-    def extract_from_url(url):
-        spotify_pattern_playlist = r'https://open\.spotify\.com/(?:intl-[a-z]{2}/)?playlist/([\w\d]+)'
-        spotify_pattern_album = r'https://open\.spotify\.com/(?:intl-[a-z]{2}/)?album/([\w\d]+)'
-        spotify_pattern_track = r'https://open\.spotify\.com/(?:intl-[a-z]{2}/)?track/([\w\d]+)'
-        youtube_pattern = r'https://www\.youtube\.com/watch\?v=([\w\d_-]+)'
-
-        spotify_match_playlist = re.match(spotify_pattern_playlist, url)
-        spotify_match_album = re.match(spotify_pattern_album, url)
-        spotify_match_track = re.match(spotify_pattern_track, url)
-        youtube_match = re.match(youtube_pattern, url)
-
-        if spotify_match_playlist:
-            return "Spotify", "playlist", spotify_match_playlist.group(1)
-        elif spotify_match_album:
-            return "Spotify", "album", spotify_match_album.group(1)
-        elif spotify_match_track:
-            return "Spotify", "track", spotify_match_track.group(1)
-        elif youtube_match:
-            return "YouTube", youtube_match.group(1)
-        else:
-            return "Unknown", None
 
 
 if __name__ == "__main__":

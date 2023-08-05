@@ -263,6 +263,24 @@ class Downloader:
         self.tagger = Tagger()
         self.event = threading.Event()
 
+    @staticmethod
+    def extract_from_url(url):
+        spotify_pattern = r"https://open\.spotify\.com/(?:intl-[a-z]{2}/)?(playlist|album|track)/([\w]+)"
+        youtube_pattern = r"https://www\.youtube\.com/watch\?v=([\w_-]+)"
+
+        spotify_match = re.match(spotify_pattern, url)
+        youtube_match = re.match(youtube_pattern, url)
+
+        if spotify_match:
+            spotify_type = spotify_match.group(1)
+            spotify_uri = spotify_match.group(2)
+            return "Spotify", spotify_type, spotify_uri
+        elif youtube_match:
+            youtube_video_id = youtube_match.group(1)
+            return "YouTube", None, youtube_video_id
+        else:
+            return "Unknown", None, None
+
     def downloader_thread(self, event, value, blacklist):
         self.event = event
         self.download_track(tags=value, blacklist=blacklist)
@@ -270,15 +288,6 @@ class Downloader:
             data=blacklist, path=os.path.join(self.tagger.verify_path, "blacklist.json")
         )
         # self.tagger.verify_tags(blacklist=blacklist)
-        # self.event.set()
-
-    def download(self,  uri, mode, blacklist):
-        log("Download " + mode.value + ": " + uri, "a")
-        tags = self.tagger.get_tags(uri, mode)
-        for key, value in tags.items():
-            self.download_track(tags=value, blacklist=blacklist)
-            self.tagger.verify_tags(blacklist=blacklist)
-            
 
     # ToDo: download missing tracks, which are to long or extended remix
     def download_track(self, tags, blacklist):
@@ -343,57 +352,5 @@ def log(string, mode="a"):
         file.write(string + "\n")
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("-a", "--album", required=False, help="Spotify album uri")
-    ap.add_argument("-p", "--playlist", required=False, help="Spotify playlist uri")
-    ap.add_argument("-t", "--track", required=False, help="Spotify track uri")
-    ap.add_argument(
-        "-v",
-        "--verify",
-        required=False,
-        help="Verify existing files",
-        action="store_true",
-    )
-    args = vars(ap.parse_args())
-
-    downloader = Downloader()
-    blacklist = File.get_json(path="blacklist.json")
-    if args["album"]:
-        downloader.download(
-            uri=args["album"],
-            mode=tag_mode_t.album,
-            blacklist=blacklist,
-        )
-    elif args["playlist"]:
-        downloader.download(
-            uri=args["playlist"],
-            mode=tag_mode_t.playlist,
-            blacklist=blacklist,
-        )
-    elif args["track"]:
-        downloader.download(
-            uri=args["track"], mode=tag_mode_t.track, blacklist=blacklist
-        )
-    if args["verify"]:
-        downloader.tagger.verify_tags(os.getcwd(), blacklist)
-    return
-
-
 if __name__ == "__main__":
-    main()
-    # tagger = Tagger()
-    # dir = "test/"
-    # for file in os.listdir(dir):
-    #     if file.lower().endswith(".mp3"):
-    #         fullpath = os.path.join(dir, file)
-    #         song = EasyID3(fullpath)
-    #         track = MP3(fullpath)
-    #         res = tagger.research_uri(
-    #             track=song["title"][0],
-    #             artist=song["artist"][0],
-    #             album=song["album"][0],
-    #             length=track.info.length,
-    #         )
-    #         if res != False:
-    #             os.rename(fullpath, "test/done/" + res + ".mp3")
+    print("module is deprecated. Please use the GUI: 'app.py'")
