@@ -1,5 +1,5 @@
 customtkinter==5.2.0
-ffmpeg==1.4
+ffmpeg-python==0.2.0
 mutagen==1.46.0
 Pillow==10.0.0
 Pillow==10.0.0

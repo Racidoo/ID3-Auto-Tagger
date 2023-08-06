@@ -13,7 +13,7 @@ from pytube import YouTube  # download yt-videos
 from pytube import Search  # search yt-videos
 from mutagen.easyid3 import EasyID3  # set ID3-tags
 from mutagen.id3 import ID3, APIC  # set albumcover
-
+import ffmpeg
 
 GENRE = "Unknown"
 
@@ -173,10 +173,18 @@ class Tagger:
 
     @staticmethod
     def convert_to_mp3(uri):
-        if os.path.isfile(uri + ".mp3") == False:
-            print()
-            os.system("ffmpeg -i " + uri + ".mp4 " + uri + ".mp3 -loglevel warning")
-            os.system("rm " + uri + ".mp4")
+        # if os.path.isfile(uri + ".mp3") == False:
+        ffmpeg.run(
+            ffmpeg.output(
+                ffmpeg.input(uri + ".mp4"),
+                uri + ".mp3",
+                format="mp3",
+                acodec="libmp3lame",
+                ab="192k",
+            ),quiet=True
+        )
+        # os.system("ffmpeg -i " + uri + ".mp4 " + uri + ".mp3 -loglevel warning")
+        os.remove(uri + ".mp4")
 
     @staticmethod
     def assign_id3_tag(uri, tags):
