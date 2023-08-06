@@ -287,7 +287,6 @@ class Downloader:
         File.append_json(
             data=blacklist, path=os.path.join(self.tagger.verify_path, "blacklist.json")
         )
-        # self.tagger.verify_tags(blacklist=blacklist)
 
     # ToDo: download missing tracks, which are to long or extended remix
     def download_track(self, tags, blacklist):
