@@ -81,10 +81,10 @@ class Tagger:
         track: str = convert_to_dash_pattern(song_id3["TIT2"].text[0]).lower()
         artist: str = song_id3["TPE1"].text[0].lower()
         album: str = song_id3["TALB"].text[0].lower()
-        length = song_mp3.info.length
+        length = song_mp3.info.length * 1000
 
         query = f"track: {track},artist: {artist},album: {album}"
-        request = json.loads(json.dumps(self.sp.search(query, type="track")))
+        request = json.loads(json.dumps(self.sp.search(query,limit=20, type="track")))
 
         def debug_info(issue, expected, actual):
             print(file_path, f"- {issue} incorrect: {expected} != {actual}")
@@ -94,9 +94,11 @@ class Tagger:
             artist_name = i["artists"][0]["name"].lower()
             album_name = i["album"]["name"].lower()
 
-            if track.lower() != track_name:
+            if track.lower() not in track_name:
                 debug_info("track", f"{track}", f"{track_name}")
-            elif artist.lower() not in artist_name:
+            elif (
+                artist.lower() not in artist_name and artist_name not in artist.lower()
+            ):
                 debug_info("artist", f"{artist}", f"{artist_name}")
             elif album.lower() != album_name:
                 debug_info("album", album, album_name)
