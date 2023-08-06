@@ -199,7 +199,6 @@ class Tagger:
             ),
             quiet=True,
         )
-        # os.system("ffmpeg -i " + uri + ".mp4 " + uri + ".mp3 -loglevel warning")
         os.remove(uri + ".mp4")
 
     @staticmethod
@@ -210,12 +209,18 @@ class Tagger:
             if tag == "duration_ms" or tag == "cover" or tag == "id":
                 continue
             if tag in song:
-                if not song[tag]:
+                if not value == song[tag][0]:
                     # Don't overwrite existing genre
                     if tag == "genre":
                         continue
                     log(
-                        uri + ": Changed " + tag + " from " + song[tag] + " to " + value
+                        uri
+                        + ": Changed "
+                        + tag
+                        + " from "
+                        + song[tag][0]
+                        + " to "
+                        + value
                     )
                     song[tag] = value
                     status = status_t.changed
@@ -262,14 +267,10 @@ class Tagger:
                 continue
             if not filename.endswith(".mp3"):
                 continue
-            print("Verifying ", filename, end="")
+            print("Verifying ", filename)
             tags = self.get_tags(uri=uri)[uri]
-            # if not (
             self.assign_id3_tag(uri, tags)
-            # == status_t.unchanged and
             self.set_album_cover(uri, tags["cover"])
-            # == status_t.unchanged ):
-            # continue
             song = EasyID3(filename)
             blacklist["blacklist"][uri] = {
                 "title": song["title"][0],
