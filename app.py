@@ -1,4 +1,5 @@
 import tkinter
+from typing import Optional, Tuple, Union
 import customtkinter
 import os
 import requests
@@ -10,8 +11,6 @@ from mutagen.id3 import ID3
 from mutagen.easyid3 import EasyID3
 from mutagen.mp3 import MP3
 from pprint import pprint
-
-from copy import copy
 
 
 class Settings:
@@ -30,7 +29,108 @@ class Settings:
             "Progress",
         ]
         self.research_src = os.path.join(self.dir, "researched")
+        self.research_failed = os.path.join(self.dir, "no-data")
         self.timeout = 10
+        self.default_cover = "https://community.mp3tag.de/uploads/default/original/2X/a/acf3edeb055e7b77114f9e393d1edeeda37e50c9.png"
+
+
+class ResearchDialog(customtkinter.CTkToplevel):
+    def __init__(
+        self,
+        fg_color: Optional[Union[str, Tuple[str, str]]] = None,
+        text_color: Optional[Union[str, Tuple[str, str]]] = None,
+        button_fg_color: Optional[Union[str, Tuple[str, str]]] = None,
+        button_hover_color: Optional[Union[str, Tuple[str, str]]] = None,
+        button_text_color: Optional[Union[str, Tuple[str, str]]] = None,
+        entry_fg_color: Optional[Union[str, Tuple[str, str]]] = None,
+        entry_border_color: Optional[Union[str, Tuple[str, str]]] = None,
+        entry_text_color: Optional[Union[str, Tuple[str, str]]] = None,
+        tags_list=None,
+        labels=None,
+        title: str = "CTkDialog",
+        text: str = "CTkDialog",
+        func=None,
+        file=None,
+    ):
+        super().__init__(fg_color=fg_color)
+
+        self._fg_color = (
+            customtkinter.ThemeManager.theme["CTkToplevel"]["fg_color"]
+            if fg_color is None
+            else self._check_color_type(fg_color)
+        )
+        self._text_color = (
+            customtkinter.ThemeManager.theme["CTkLabel"]["text_color"]
+            if text_color is None
+            else self._check_color_type(button_hover_color)
+        )
+        # self._button_fg_color = customtkinter.ThemeManager.theme["CTkButton"]["fg_color"] if button_fg_color is None else self._check_color_type(button_fg_color)
+        # self._button_hover_color = customtkinter.ThemeManager.theme["CTkButton"]["hover_color"] if button_hover_color is None else self._check_color_type(button_hover_color)
+        # self._button_text_color = customtkinter.ThemeManager.theme["CTkButton"]["text_color"] if button_text_color is None else self._check_color_type(button_text_color)
+        # self._entry_fg_color = customtkinter.ThemeManager.theme["CTkEntry"]["fg_color"] if entry_fg_color is None else self._check_color_type(entry_fg_color)
+        # self._entry_border_color = customtkinter.ThemeManager.theme["CTkEntry"]["border_color"] if entry_border_color is None else self._check_color_type(entry_border_color)
+        # self._entry_text_color = customtkinter.ThemeManager.theme["CTkEntry"]["text_color"] if entry_text_color is None else self._check_color_type(entry_text_color)
+
+        self._user_input: Union[str, None] = None
+        self._running: bool = False
+        self._text = text
+        self.func = func
+        self.file = file
+        self.song_labels = []
+        self.title(title)
+        self.lift()  # lift window on top
+        self.attributes("-topmost", True)  # stay on top
+        self.protocol("WM_DELETE_WINDOW", self.__on_closing)
+        self.after(
+            10,
+            # threading.Thread(
+            # target=self._create_widgets, args=[tags_list, labels]
+            self._create_widgets,
+            tags_list,
+            labels
+            # ).start(),
+        )  # create widgets with slight delay, to avoid white flickering of background
+        self.resizable(False, False)
+        self.grab_set()  # make other windows not clickable
+
+    # def _create_widgets(self):
+
+    def _create_widgets(self, tags_list, labels):
+        #     self.scroll_frame = customtkinter.CTkFrame(self)
+        #     self.scroll_frame.rowconfigure(0, weight=0)
+        #     self.scroll_frame.rowconfigure(1, weight=1)
+        #     self.scroll_frame.columnconfigure(1, weight=1)
+        #     App.draw_header(master=self, labels=labels).grid(row=0, column=0)
+        #     self.scroll_frame.grid(row=1, column=0, sticky="nsew")
+        for i, tags in enumerate(tags_list, start=1):
+            self.song_labels.append(
+                SongLabel(
+                    master=self,
+                    tags=tags,
+                    row=i,
+                    cover_size=(25, 25),
+                    # func=lambda: self.__on_select(uri=tags["id"]),
+                    func=self.__on_closing,
+                )
+            )
+        self._cancel_button = customtkinter.CTkButton(
+            master=self,
+            width=100,
+            border_width=0,
+            text="Cancel",
+            command=self.__on_closing,
+        )
+        self._cancel_button.grid(
+            row=2, column=1, columnspan=1, padx=(10, 20), pady=(0, 20), sticky="ew"
+        )
+
+    def _cancel_event(self):
+        self.grab_release()
+        self.destroy()
+
+    def __on_closing(self):
+        self.grab_release()
+        self.destroy()
 
 
 # Needs rework to make it a proper widget. Currently a workaround to make the selection work
@@ -51,6 +151,7 @@ class SongLabel:
         },
         active_songs: str = [],
         song_path: str = "",
+        cover_size=(75, 75),
         **kwargs,
     ):
         self.frame = customtkinter.CTkFrame(master=master, fg_color="transparent")
@@ -59,13 +160,13 @@ class SongLabel:
         self.is_active = False
         image: customtkinter.CTkImage
 
-        if "image" in kwargs:
+        if isinstance(tags["cover"], str):
             image = customtkinter.CTkImage(
-                Image.open(BytesIO(kwargs.pop("image"))), size=(75, 75)
+                Image.open(requests.get(tags["cover"], stream=True).raw), size=(75, 75)
             )
         else:
             image = customtkinter.CTkImage(
-                Image.open(requests.get(tags["cover"], stream=True).raw), size=(75, 75)
+                Image.open(BytesIO(tags["cover"])), size=cover_size
             )
 
         self.song: str = song_path
@@ -85,13 +186,15 @@ class SongLabel:
                 else "transparent"
             )
 
-        i = customtkinter.CTkLabel(master=self.frame, image=image, text="")
-        i.grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        i.bind("<Button-1>", lambda event: __clicked_label(event))
+        self.image_label = customtkinter.CTkLabel(
+            master=self.frame, image=image, text=""
+        )
+        self.image_label.grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        self.image_label.bind("<Button-1>", lambda event: __clicked_label(event))
 
         tags["length"] = Downloader.convert_to_mm_ss(tags["duration_ms"] / 1000)
         labels = ["title", "artist", "album", "genre", "length"]
-
+        self.labels = []
         for pos, label in enumerate(labels, start=1):
             l = customtkinter.CTkLabel(
                 master=self.frame,
@@ -101,8 +204,14 @@ class SongLabel:
             )
             l.grid(row=0, column=pos, padx=5, pady=5)
             l.bind("<Button-1>", lambda event: __clicked_label(event))
-
+            self.labels.append(l)
         self.frame.bind("<Button-1>", lambda event: __clicked_label(event))
+
+    def destroy(self):
+        self.image_label.destroy()
+        for l in self.labels:
+            l.destroy()
+        self.frame.destroy()
 
 
 class App(customtkinter.CTk):
@@ -334,6 +443,7 @@ class App(customtkinter.CTk):
         #     os.listdir(File.check_dir(self.settings.dir)),
         #     key=lambda file: self.get_album_tag(os.path.join(self.settings.dir, file)),
         # )
+
         sorted_files = []
         for file in os.listdir(File.check_dir(self.settings.song_path)):
             if file.lower().endswith(".mp3"):
@@ -344,9 +454,13 @@ class App(customtkinter.CTk):
             file_path = os.path.join(self.settings.song_path, file)
             song_tags = ID3(file_path)
             song = MP3(file_path)
-            tags = {
-                label: song_tags[frame].text[0] for label, frame in self.frames.items()
-            }
+            tags = {}
+            for label, frame in self.frames.items():
+                if song_tags.getall(frame):
+                    tags[label] = song_tags[frame].text[0]
+                else:
+                    tags[label] = ""
+
             tags.update(
                 {
                     "duration_ms": song.info.length * 1000,
@@ -365,9 +479,10 @@ class App(customtkinter.CTk):
             )
 
     def draw_research_frame(self):
-        self.research_existing_frame = customtkinter.CTkScrollableFrame(
-            self, corner_radius=10
-        )
+        self.research_existing_frame = customtkinter.CTkFrame(self, corner_radius=10)
+        self.research_existing_frame.columnconfigure(0, weight=1)
+        self.research_existing_frame.rowconfigure(0, weight=0)
+        self.research_existing_frame.rowconfigure(1, weight=1)
         self.research_button = customtkinter.CTkButton(
             self.research_existing_frame,
             command=lambda: self.research_tracks(
@@ -376,6 +491,43 @@ class App(customtkinter.CTk):
             text="Research existing songs",
         )
         self.research_button.grid(sticky="nsew")
+        self.research_existing_scroll_frame = customtkinter.CTkScrollableFrame(
+            self.research_existing_frame
+        )
+        self.research_existing_scroll_frame.grid(row=1, column=0, sticky="nsew")
+
+        sorted_files = []
+        for file in os.listdir(File.check_dir(self.settings.research_failed)):
+            if file.lower().endswith(".mp3"):
+                sorted_files.append(file)
+
+        # draw song details
+        for i, file in enumerate(sorted_files, start=1):
+            file_path = os.path.join(self.settings.research_failed, file)
+            song_tags = ID3(file_path)
+            song = MP3(file_path)
+            tags = {}
+            for label, frame in self.frames.items():
+                if song_tags.getall(frame):
+                    tags[label] = song_tags[frame].text[0]
+                else:
+                    tags[label] = ""
+            tags["duration_ms"] = song.info.length * 1000
+
+            if song_tags.getall("APIC"):
+                tags["cover"] = song_tags.getall("APIC")[0].data
+            else:
+                tags["cover"] = self.settings.default_cover
+
+            SongLabel(
+                master=self.research_existing_scroll_frame,
+                func=lambda file=file: self.open_research_dialog(
+                    research_data_path="research_data.json", file=file
+                ),
+                row=i,
+                tags=tags,
+                song_path=file_path,
+            )
 
     def draw_settings_frame(self):
         self.__keep_cover = customtkinter.BooleanVar()
@@ -421,7 +573,8 @@ class App(customtkinter.CTk):
         )
         self.entry_cover_path.grid(row=9, padx=5, sticky="nsew")
 
-    def draw_header(self, master, labels):
+    @staticmethod
+    def draw_header(master, labels):
         frame = customtkinter.CTkFrame(master=master, height=20)
         for col, label_text in enumerate(labels):
             customtkinter.CTkLabel(
@@ -537,20 +690,27 @@ class App(customtkinter.CTk):
                 break
 
     def research_tracks(self, src, dest):
+        research_data = File.get_json("research_data.json")
         for file in os.listdir(File.check_dir(src)):
             if file.lower().endswith(".mp3"):
                 fullpath = os.path.join(src, file)
                 try:
                     res = self.tagger.research_uri(fullpath)
                 except:
+                    print("EXCEPTION")
                     continue
-                if res != False:
-                    os.rename(fullpath, os.path.join(dest, res + ".mp3"))
-                else:
+                # list contains possible researched tracks to choose from -> no automatic re-naming
+                if isinstance(res, list):
+                    research_data[file] = res
                     os.rename(
                         fullpath,
                         os.path.join(dest, File.check_dir("no-data"), file),
                     )
+                else:
+                    os.rename(fullpath, os.path.join(dest, res + ".mp3"))
+
+        File.append_json(research_data, "research_data.json")
+        self.draw_research_frame()
 
     def select_song(self, tags: dict):
         if "cover" in tags:
@@ -567,6 +727,24 @@ class App(customtkinter.CTk):
     # def get_album_tag(file_path):
     #     song_tags = ID3(file_path)
     #     return song_tags["TALB"].text[0] if "TALB" in song_tags else ""
+    def open_research_dialog(self, research_data_path, file):
+        tags_list = File.get_json(research_data_path)[file]
+        ResearchDialog(
+            file=file,
+            tags_list=tags_list,
+            labels=self.settings.labels_text[:-1],
+            func=self.handle_dialog,
+        )
+
+    def handle_dialog(self, uri, file):
+        research_data: dict = File.get_json("research_data.json")
+        # os.rename(
+        #     os.path.join(self.settings.research_failed, file),
+        #     os.path.join(self.settings.dir, uri + ".mp3"),
+        # )
+        # research_data.pop(file)
+        # File.append_json(research_data, "research_data.json")
+        print("clicked label")
 
 
 if __name__ == "__main__":

@@ -42,8 +42,8 @@ class File:
         return data
 
     @staticmethod
-    def append_json(data, path):
-        with open(path, "w+") as file:
+    def append_json(data, path, mode="w+"):
+        with open(path, mode) as file:
             file.seek(0)
             json.dump(data, file, sort_keys=True, indent=4)
 
@@ -84,16 +84,20 @@ class Tagger:
         length = song_mp3.info.length * 1000
 
         query = f"track: {track},artist: {artist},album: {album}"
-        request = json.loads(json.dumps(self.sp.search(query,limit=20, type="track")))
+        request = json.loads(json.dumps(self.sp.search(query, limit=10, type="track")))
 
         def debug_info(issue, expected, actual):
             print(file_path, f"- {issue} incorrect: {expected} != {actual}")
 
+        list = []
         for i in request["tracks"]["items"]:
+            # delete unused spam
+            i["album"]["available_markets"] = ""
+            i["available_markets"] = ""
             track_name = i["name"].lower()
             artist_name = i["artists"][0]["name"].lower()
             album_name = i["album"]["name"].lower()
-
+            list.append(self.extract_tags(i, self.extract_album_tags(i["album"])))
             if track.lower() not in track_name:
                 debug_info("track", f"{track}", f"{track_name}")
             elif (
@@ -107,7 +111,7 @@ class Tagger:
             else:
                 return i["id"]
 
-        return False
+        return list
 
     def get_tags(self, uri: str, mode: tag_mode_t = tag_mode_t.track) -> dict:
         match mode:
@@ -151,14 +155,18 @@ class Tagger:
         album_artist = []
         tags: dict = {}
         for i in json_album["artists"]:
-            album_artist.append(i["name"])
+            album_artist.append(i["name"]) if "name" in json_album["artists"] else ""
 
         tags["albumartist"] = "; ".join(album_artist)
-        tags["organization"] = json_album["label"]
-        tags["copyright"] = json_album["copyrights"][0]["text"]
-        tags["date"] = json_album["release_date"]
-        tags["cover"] = json_album["images"][1]["url"]
-        tags["album"] = json_album["name"]
+        tags["organization"] = json_album["label"] if "label" in json_album else ""
+        tags["copyright"] = (
+            json_album["copyrights"][0]["text"] if "copyrights" in json_album else ""
+        )
+        tags["date"] = (
+            json_album["release_date"] if "release_date" in json_album else ""
+        )
+        tags["cover"] = json_album["images"][1]["url"] if "images" in json_album else ""
+        tags["album"] = json_album["name"] if "name" in json_album else ""
 
         if "genre" in tags:
             tags["genre"] = (json_album["genres"][0],)
@@ -167,7 +175,7 @@ class Tagger:
         return tags
 
     @staticmethod
-    def extract_tags(json_track, tags):
+    def extract_tags(json_track, tags={}):
         artist = []
         for i in json_track["artists"]:
             artist.append(i["name"])
