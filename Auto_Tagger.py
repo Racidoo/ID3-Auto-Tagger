@@ -155,7 +155,7 @@ class Tagger:
         album_artist = []
         tags: dict = {}
         for i in json_album["artists"]:
-            album_artist.append(i["name"]) if "name" in json_album["artists"] else ""
+            album_artist.append(i["name"]) if "name" in i else ""
 
         tags["albumartist"] = "; ".join(album_artist)
         tags["organization"] = json_album["label"] if "label" in json_album else ""

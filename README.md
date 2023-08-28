@@ -21,6 +21,11 @@ Install dependencies:
 ```
 $ pip install -r requirements.txt
 ```
+Additionally ffmpeg needs to be installed.
+On Windows, using chocolatey package manager:
+```
+$choco install -y ffmpeg
+```
 Run app:
 ```
 $ python3 app.py
