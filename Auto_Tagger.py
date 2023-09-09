@@ -155,7 +155,7 @@ class Tagger:
         album_artist = []
         tags: dict = {}
         for i in json_album["artists"]:
-            album_artist.append(i["name"]) if "name" in json_album["artists"] else ""
+            album_artist.append(i["name"]) if "name" in i else ""
 
         tags["albumartist"] = "; ".join(album_artist)
         tags["organization"] = json_album["label"] if "label" in json_album else ""
@@ -238,7 +238,7 @@ class Tagger:
                 song[tag] = value
                 log(uri + ": Added " + value + " to " + tag)
                 status = status_t.new
-        song.save()
+        song.save(v2_version=3)
         return status
 
     def set_album_cover(self, uri, url):
@@ -264,7 +264,7 @@ class Tagger:
                     data=album_cover.read(),
                 )
             )
-        song.save()
+        song.save(v2_version=3)
         log(uri + ": Set new album cover")
         return status_t.new
 
