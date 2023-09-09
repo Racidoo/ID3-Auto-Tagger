@@ -238,7 +238,7 @@ class Tagger:
                 song[tag] = value
                 log(uri + ": Added " + value + " to " + tag)
                 status = status_t.new
-        song.save()
+        song.save(v2_version=3)
         return status
 
     def set_album_cover(self, uri, url):
@@ -264,7 +264,7 @@ class Tagger:
                     data=album_cover.read(),
                 )
             )
-        song.save()
+        song.save(v2_version=3)
         log(uri + ": Set new album cover")
         return status_t.new
 

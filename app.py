@@ -9,7 +9,6 @@ from io import BytesIO
 from PIL import Image
 from mutagen.id3 import ID3
 from mutagen.easyid3 import EasyID3
-from mutagen.mp3 import MP3
 from pprint import pprint
 
 
@@ -30,7 +29,7 @@ class Settings:
         ]
         self.research_src = os.path.join(self.dir, "researched")
         self.research_failed = os.path.join(self.dir, "no-data")
-        self.timeout = 10
+        self.timeout = 60
         self.default_cover = customtkinter.CTkImage(
             Image.open(
                 requests.get(
@@ -178,8 +177,9 @@ class SongLabel(customtkinter.CTkFrame):
 
         self.song: str = song_path
 
-        def __clicked_label(event):
-            # print("clicked row", row)
+        def __clicked_label(event, multiple=False):
+            # if not multiple:
+            #     active_songs.clear()
             self.is_active = not self.is_active
             if self.is_active:
                 active_songs.append(self.song)
@@ -189,7 +189,7 @@ class SongLabel(customtkinter.CTkFrame):
             self.configure(
                 fg_color=customtkinter.ThemeManager.theme["CTkButton"]["fg_color"]
                 if self.is_active
-                else "transparent"
+                else customtkinter.ThemeManager.theme["CTkFrame"]["fg_color"]
             )
             func()
 
@@ -197,7 +197,12 @@ class SongLabel(customtkinter.CTkFrame):
         self.image_label.grid(row=0, column=0, padx=5, pady=5, sticky="w")
         self.image_label.bind("<Button-1>", __clicked_label)
 
-        tags["length"] = Downloader.convert_to_mm_ss(tags["duration_ms"] / 1000)
+        if "length" not in tags:
+            if "duration_ms" in tags:
+                tags["length"] = Downloader.convert_to_mm_ss(tags["duration_ms"] / 1000)
+            else:
+                tags["length"] = "--:--"
+
         labels = ["title", "artist", "album", "genre", "length"]
         for pos, label in enumerate(labels, start=1):
             l = customtkinter.CTkLabel(
@@ -209,12 +214,13 @@ class SongLabel(customtkinter.CTkFrame):
             l.grid(row=0, column=pos, padx=5, pady=5)
             l.bind("<Button-1>", __clicked_label)
         self.bind("<Button-1>", __clicked_label)
+        # self.bind("<Shift-Button-1>", lambda event: print("Shift-Click"))
 
 
 class App(customtkinter.CTk):
     def __init__(self):
         self.PADDING_FRAME_X = (10, 10)
-        self.PADDING_FRAME_Y = (10, 10)
+        self.PADDING_FRAME_Y = (0, 0)
         self.settings = Settings()
         self.tagger = Tagger()
         self.downloader = Downloader()
@@ -237,6 +243,7 @@ class App(customtkinter.CTk):
             "tracknumber": "TRCK",
             "discnumber": "TPOS",
         }
+        self.sort_frame = self.frames["title"]
 
         super().__init__()
 
@@ -247,7 +254,7 @@ class App(customtkinter.CTk):
         # self.geometry(f"{1300}x{580}")
         self.iconbitmap("music.ico")
         # configure grid layout (2x2)
-        self.grid_columnconfigure(1, weight=6)
+        self.grid_columnconfigure(1, weight=10)
         # self.grid_columnconfigure((1, 3), weight=1)
         self.grid_rowconfigure(0, weight=6)
 
@@ -268,38 +275,42 @@ class App(customtkinter.CTk):
             ("settings", "Settings"),
         ]
 
-        # Create sidebar frame with widgets
-        self.sidebar_frame = customtkinter.CTkFrame(self, width=140, corner_radius=0)
-        self.sidebar_frame.grid(row=0, column=0, rowspan=2, sticky="nsew")
+        def on_click(event):
+            for name, text in buttons_info:
+                button_text = text if self.__buttons[name].cget("text") == "" else ""
+                self.__buttons[name].configure(text=button_text)
 
-        self.logo_label = customtkinter.CTkLabel(
-            self.sidebar_frame,
-            text="CustomTkinter",
-            font=customtkinter.CTkFont(size=20, weight="bold"),
-        )
-        self.logo_label.grid(row=0, column=0, padx=20, pady=(20, 10))
+        # Create sidebar frame with widgets
+        self.sidebar_frame = customtkinter.CTkFrame(self, width=140)
+        self.sidebar_frame.grid(row=0, column=0, rowspan=2, sticky="nsew")
+        self.sidebar_frame.bind("<Button-1>", on_click)
 
         for idx, (name, text) in enumerate(buttons_info, start=1):
             button = customtkinter.CTkButton(
                 self.sidebar_frame,
                 command=lambda n=name: self.select_frame_by_name(n),
-                text=text,
+                text="",
                 fg_color="transparent",
                 text_color=("gray10", "gray90"),
                 hover_color=("gray70", "gray30"),
                 anchor="w",
                 height=40,
+                width=40,
                 corner_radius=0,
                 border_spacing=10,
+                image=customtkinter.CTkImage(
+                    light_image=Image.open(name + "_light.png"),
+                    dark_image=Image.open(name + "_dark.png"),
+                ),
             )
-            button.grid(row=idx, column=0, sticky="ew")
-
+            # button.grid(row=idx, column=0, sticky="ew")
+            button.pack()
             # Save the button as a member variable
             self.__buttons[name] = button
 
     def draw_footer(self):
         # Footer
-        self.footer_frame = customtkinter.CTkFrame(self, corner_radius=10)
+        self.footer_frame = customtkinter.CTkFrame(self)
         self.footer_frame.grid(
             row=1,
             column=1,
@@ -363,15 +374,22 @@ class App(customtkinter.CTk):
 
     def draw_view_downloaded_frame(self):
         self.view_downloaded_frame = customtkinter.CTkFrame(self)
+        self.view_downloaded_frame.bind(
+            "<Button-1>", lambda event: print("view_downloaded_frame")
+        )
         self.draw_header(
             self.view_downloaded_frame, self.settings.labels_text[:-1]
-        ).grid(row=0, column=0, padx=5, sticky="sw")
-        self.view_downloaded_frame.columnconfigure(0, weight=1)
+        ).grid(row=0, column=0, sticky="sw")
+
+        self.view_downloaded_frame.columnconfigure(0, weight=3)
         self.view_downloaded_frame.columnconfigure(1, weight=0)
         self.view_downloaded_frame.rowconfigure(0, weight=0)
         self.view_downloaded_frame.rowconfigure(1, weight=1)
 
         self.edit_downloaded_frame = customtkinter.CTkFrame(self.view_downloaded_frame)
+        self.edit_downloaded_frame.bind(
+            "<Button-1>", lambda event: print("edit_downloaded_frame")
+        )
 
         self.edit_downloaded_cover_frame = customtkinter.CTkFrame(
             self.edit_downloaded_frame
@@ -394,27 +412,27 @@ class App(customtkinter.CTk):
                 "Changing the album cover has not been implemented yet!"
             ),
         )
-        self.album_cover.grid(
-            row=0, column=0, columnspan=2, padx=20, pady=20, sticky="ew"
-        )
+        self.album_cover.pack(fill="x")
 
         def on_entry_change(widget, label):
             input_text = widget.get()
             print(label, "changed:", widget.get())
             print("selected songs:", len(self.selected_songs))
-            # widget.delete(0, "end")
+            widget.delete(0, "end")
             widget.configure(placeholder_text=input_text)
             for path in self.selected_songs:
                 print(path, label, input_text)
                 song = EasyID3(path)
                 song[label] = input_text
-                song.save()
+                song.save(v2_version=3)
             self.refresh_scroll_frame()
 
         for pos, label in enumerate(self.frames.keys()):
             customtkinter.CTkLabel(
-                master=self.edit_downloaded_tags_frame, text=label, wraplength=150
-            ).grid(row=pos, column=0, padx=20, pady=5, sticky="ew")
+                master=self.edit_downloaded_tags_frame,
+                text=label.capitalize(),
+                wraplength=150,
+            ).grid(row=pos, column=0, padx=20, pady=5, sticky="w")
             e = customtkinter.CTkEntry(
                 master=self.edit_downloaded_tags_frame,
                 placeholder_text=label,
@@ -429,36 +447,49 @@ class App(customtkinter.CTk):
 
     def refresh_scroll_frame(self):
         # clear selected songs each time to avoid having multiple istances of the same song present
-        # self.selected_songs = []
+        self.selected_songs = []
         self.view_downloaded_scroll_frame = customtkinter.CTkScrollableFrame(
             self.view_downloaded_frame
         )
+        self.view_downloaded_scroll_frame.bind(
+            "<Button-1>", lambda event: print("view_downloaded_scoll_frame")
+        )
+
         self.view_downloaded_scroll_frame.grid(row=1, column=0, sticky="nsew")
-        # sorted_files = sorted(
-        #     os.listdir(File.check_dir(self.settings.dir)),
-        #     key=lambda file: self.get_album_tag(os.path.join(self.settings.dir, file)),
-        # )
+        self.view_downloaded_scroll_frame.focus()
+
+        def extract_frame(file_path, frame):
+            song_tags = ID3(file_path)
+            frame = song_tags.get(frame)
+            if frame:
+                return frame.text[0]
+            return ""
 
         sorted_files = []
         for file in os.listdir(File.check_dir(self.settings.song_path)):
             if file.lower().endswith(".mp3"):
                 sorted_files.append(file)
 
+        sorted_files.sort(
+            key=lambda file: extract_frame(
+                os.path.join(self.settings.song_path, file), self.sort_frame
+            )
+        )
+
         # draw song details
         for i, file in enumerate(sorted_files, start=1):
             file_path = os.path.join(self.settings.song_path, file)
             song_tags = ID3(file_path)
-            song = MP3(file_path)
             tags = {}
             for label, frame in self.frames.items():
-                if song_tags.getall(frame):
+                if song_tags.get(frame):
                     tags[label] = song_tags[frame].text[0]
                 else:
                     tags[label] = ""
 
             tags.update(
                 {
-                    "duration_ms": song.info.length * 1000,
+                    "length": song_tags.getall("TLEN"),
                     "cover": song_tags.getall("APIC")[0].data,
                 }
             )
@@ -468,13 +499,14 @@ class App(customtkinter.CTk):
                 func=self.select_song,
                 row=i,
                 tags=tags,
-                image=song_tags.getall("APIC")[0].data,
+                # image=song_tags.get("APIC"),
                 active_songs=self.selected_songs,
                 song_path=file_path,
-            ).grid(row=i, column=0, sticky="nsew")
+                # ).grid(row=i, column=0, sticky="nsew")
+            ).pack(fill="both")
 
     def draw_research_frame(self):
-        self.research_existing_frame = customtkinter.CTkFrame(self, corner_radius=10)
+        self.research_existing_frame = customtkinter.CTkFrame(self)
         self.research_existing_frame.columnconfigure(0, weight=1)
         self.research_existing_frame.rowconfigure(0, weight=0)
         self.research_existing_frame.rowconfigure(1, weight=1)
@@ -500,14 +532,13 @@ class App(customtkinter.CTk):
         for i, file in enumerate(sorted_files, start=1):
             file_path = os.path.join(self.settings.research_failed, file)
             song_tags = ID3(file_path)
-            song = MP3(file_path)
             tags = {}
             for label, frame in self.frames.items():
                 if song_tags.getall(frame):
                     tags[label] = song_tags[frame].text[0]
                 else:
                     tags[label] = ""
-            tags["duration_ms"] = song.info.length * 1000
+            tags["length"] = song_tags.getall("TLEN")[0]
 
             if song_tags.getall("APIC"):
                 tags["cover"] = song_tags.getall("APIC")[0].data
@@ -526,7 +557,7 @@ class App(customtkinter.CTk):
 
     def draw_settings_frame(self):
         self.__keep_cover = customtkinter.BooleanVar()
-        self.settings_frame = customtkinter.CTkFrame(self, corner_radius=0)
+        self.settings_frame = customtkinter.CTkFrame(self)
         label_blacklist = customtkinter.CTkLabel(
             self.settings_frame, text="Path to 'blacklist.json'"
         )
@@ -568,15 +599,25 @@ class App(customtkinter.CTk):
         )
         self.entry_cover_path.grid(row=9, padx=5, sticky="nsew")
 
-    @staticmethod
-    def draw_header(master, labels):
+    # @staticmethod
+    def draw_header(self, master, labels):
         frame = customtkinter.CTkFrame(master=master, height=20)
+
+        def sort_header(event, frame):
+            self.sort_frame = self.frames[frame]
+            self.refresh_scroll_frame()
+            # event.widget.configure(fg_color=customtkinter.ThemeManager.theme["CTkButton"]["fg_color"])
+
         for col, label_text in enumerate(labels):
-            customtkinter.CTkLabel(
+            l = customtkinter.CTkLabel(
                 master=frame,
                 text=label_text,
                 width=100 if not label_text == "Cover" else 50,
-            ).grid(row=0, column=col, padx=5, pady=5)
+            )
+            l.grid(row=0, column=col, padx=5, pady=5)
+            l.bind(
+                "<Button-1>", lambda event, t=label_text: sort_header(event, t.lower())
+            )
         return frame
 
     def select_frame_by_name(self, name):
@@ -652,6 +693,8 @@ class App(customtkinter.CTk):
                     self.tagger.verify_tags(blacklist=self.blacklist)
 
                 threading.Thread(target=watch_threads, args=[threads]).start()
+                self.entry.delete(0, "end")
+                self.entry.configure(placeholder_text="")
 
     def __toggle_verify_only(self):
         verify_only = self.verify_switch.get()
@@ -719,23 +762,23 @@ class App(customtkinter.CTk):
         num_selected_songs = len(self.selected_songs)
 
         if num_selected_songs == 0:
-            self.edit_downloaded_frame.forget()
+            self.edit_downloaded_frame.grid_forget()
             return
 
         self.edit_downloaded_frame.grid(row=0, rowspan=2, column=1, sticky="nsew")
 
         if num_selected_songs == 1:
             song = ID3(self.selected_songs[0])
-            apic_frames = song.getall("APIC")
+            apic_frames = song.getall("APIC")[0]
 
             if apic_frames:
                 image = customtkinter.CTkImage(
-                    Image.open(BytesIO(apic_frames[0].data)),
+                    Image.open(BytesIO(apic_frames.data)),
                     size=(300, 300),
                 )
 
             for label, frame in self.frames.items():
-                tags = song[frame].text[0] if song.getall(frame) else ""
+                tags = song[frame].text[0] if song.get(frame) else ""
                 self.edit_downloaded_entries[label].configure(placeholder_text=tags)
 
         else:
@@ -744,9 +787,7 @@ class App(customtkinter.CTk):
             for i, file in enumerate(self.selected_songs):
                 song = ID3(file)
                 for label, frame in self.frames.items():
-                    song_tags[i][label] = (
-                        song[frame].text[0] if song.getall(frame) else ""
-                    )
+                    song_tags[i][label] = song[frame].text[0] if song.get(frame) else ""
 
             common_values = {}
             first_song_tags = song_tags[0]
@@ -763,9 +804,6 @@ class App(customtkinter.CTk):
 
         self.album_cover.configure(image=image)
 
-    # def get_album_tag(file_path):
-    #     song_tags = ID3(file_path)
-    #     return song_tags["TALB"].text[0] if "TALB" in song_tags else ""
     def open_research_dialog(self, research_data_path, file):
         tags_list = File.get_json(research_data_path)[file]
         ResearchDialog(
