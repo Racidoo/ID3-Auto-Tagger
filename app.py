@@ -37,7 +37,7 @@ class Settings:
                     stream=True,
                 ).raw
             ),
-            size=(300, 300),
+            size=(250, 250),
         )
 
 
@@ -96,7 +96,7 @@ class ResearchDialog(customtkinter.CTkToplevel):
         self.rowconfigure(0, weight=0)
         self.rowconfigure(1, weight=1)
         self.columnconfigure(1, weight=1)
-        App.draw_header(master=self, labels=labels).grid(row=0, column=0, columnspan=6)
+        App.draw_header(master=self, labels=labels).grid(row=0, column=0)
 
         for i, tags in enumerate(tags_list, start=1):
             button_click = lambda u=tags["id"]: self.handle_dialog(u, None)
@@ -217,6 +217,40 @@ class SongLabel(customtkinter.CTkFrame):
         # self.bind("<Shift-Button-1>", lambda event: print("Shift-Click"))
 
 
+# class Header(customtkinter.CTkFrame):
+#     def __init__(self, app, master: any, labels, **kwargs):
+#         customtkinter.CTkFrame.__init__(self, master, height=20)
+
+#         # def draw_header(self, master, labels):
+#         #     frame = customtkinter.CTkFrame(master=master, height=20)
+
+#         def sort_header(event, frame):
+#             self.sort_frame = app.frames[frame]
+#             app.refresh_scroll_frame()
+#             # event.widget.configure(fg_color=customtkinter.ThemeManager.theme["CTkButton"]["fg_color"])
+
+#         def filter_header(event):
+#             self.filter = event.widget.get()
+#             app.refresh_scroll_frame()
+
+#         for col, label_text in enumerate(labels):
+#             l = customtkinter.CTkLabel(
+#                 master=self,
+#                 text=label_text,
+#                 width=100 if not label_text == "Cover" else 50,
+#             )
+#             l.grid(row=0, column=col, padx=5, pady=5)
+#             l.bind(
+#                 "<Button-1>", lambda event, t=label_text: sort_header(event, t.lower())
+#             )
+#             e = customtkinter.CTkEntry(
+#                 master=self, width=100 if not label_text == "Cover" else 50
+#             )
+#             e.grid(row=1, column=col, padx=5, pady=5)
+#             e.bind("<Return>", lambda event: filter_header(event))
+#         # return frame
+
+
 class App(customtkinter.CTk):
     def __init__(self):
         self.PADDING_FRAME_X = (10, 10)
@@ -244,6 +278,7 @@ class App(customtkinter.CTk):
             "discnumber": "TPOS",
         }
         self.sort_frame = self.frames["title"]
+        self.filter = ""
 
         super().__init__()
 
@@ -364,8 +399,12 @@ class App(customtkinter.CTk):
         self.download_frame.columnconfigure(0, weight=1)
         self.download_frame.rowconfigure(0, weight=0)
         self.download_frame.rowconfigure(1, weight=1)
+        # Header(
+        #     app=self, master=self.download_frame, labels=self.settings.labels_text
+        # ).grid(row=0, column=0, sticky="w")
         self.draw_header(self.download_frame, self.settings.labels_text).grid(
-            row=0, column=0, sticky="w"
+            # row=0, column=0, sticky="w"
+            sticky="nsew"
         )
         self.download_scroll_frame = customtkinter.CTkScrollableFrame(
             self.download_frame
@@ -377,9 +416,16 @@ class App(customtkinter.CTk):
         self.view_downloaded_frame.bind(
             "<Button-1>", lambda event: print("view_downloaded_frame")
         )
+        # Header(
+        #     app=self,
+        #     master=self.view_downloaded_frame,
+        #     labels=self.settings.labels_text[:-1],
+        # ).grid(row=0, column=0, sticky="sw")
         self.draw_header(
             self.view_downloaded_frame, self.settings.labels_text[:-1]
-        ).grid(row=0, column=0, sticky="sw")
+        ).grid(
+            # row=0, column=0, sticky="sw"
+               sticky="nsew")
 
         self.view_downloaded_frame.columnconfigure(0, weight=3)
         self.view_downloaded_frame.columnconfigure(1, weight=0)
@@ -432,11 +478,14 @@ class App(customtkinter.CTk):
                 master=self.edit_downloaded_tags_frame,
                 text=label.capitalize(),
                 wraplength=150,
-            ).grid(row=pos, column=0, padx=20, pady=5, sticky="w")
+            ).grid(
+                row=pos, column=0,
+                   padx=20, pady=5, 
+                    sticky="nsew")
             e = customtkinter.CTkEntry(
                 master=self.edit_downloaded_tags_frame,
                 placeholder_text=label,
-                width=250,
+                width=200,
             )
             e.bind(
                 "<Return>",
@@ -446,46 +495,49 @@ class App(customtkinter.CTk):
             self.edit_downloaded_entries[label] = e
 
     def refresh_scroll_frame(self):
-        # clear selected songs each time to avoid having multiple istances of the same song present
         self.selected_songs = []
         self.view_downloaded_scroll_frame = customtkinter.CTkScrollableFrame(
             self.view_downloaded_frame
-        )
-        self.view_downloaded_scroll_frame.bind(
-            "<Button-1>", lambda event: print("view_downloaded_scoll_frame")
         )
 
         self.view_downloaded_scroll_frame.grid(row=1, column=0, sticky="nsew")
         self.view_downloaded_scroll_frame.focus()
 
-        def extract_frame(file_path, frame):
+        def extract_frame(file_path, frame) -> str:
             song_tags = ID3(file_path)
             frame = song_tags.get(frame)
-            if frame:
-                return frame.text[0]
-            return ""
+            return frame.text[0] if frame else ""
 
-        sorted_files = []
-        for file in os.listdir(File.check_dir(self.settings.song_path)):
-            if file.lower().endswith(".mp3"):
-                sorted_files.append(file)
-
+        sorted_files = [
+            file
+            for file in os.listdir(File.check_dir(self.settings.song_path))
+            if file.lower().endswith(".mp3")
+        ]
         sorted_files.sort(
             key=lambda file: extract_frame(
                 os.path.join(self.settings.song_path, file), self.sort_frame
             )
         )
 
-        # draw song details
-        for i, file in enumerate(sorted_files, start=1):
+        def contains_string(string, file) -> bool:
+            return (
+                string.lower()
+                in extract_frame(
+                    os.path.join(self.settings.song_path, file), self.sort_frame
+                ).lower()
+            )
+
+        filtered_files = filter(
+            lambda file: contains_string(self.filter, file), sorted_files
+        )
+
+        for i, file in enumerate(list(filtered_files), start=1):
             file_path = os.path.join(self.settings.song_path, file)
             song_tags = ID3(file_path)
-            tags = {}
-            for label, frame in self.frames.items():
-                if song_tags.get(frame):
-                    tags[label] = song_tags[frame].text[0]
-                else:
-                    tags[label] = ""
+            tags = {
+                label: song_tags[frame].text[0] if song_tags.get(frame) else ""
+                for label, frame in self.frames.items()
+            }
 
             tags.update(
                 {
@@ -499,10 +551,8 @@ class App(customtkinter.CTk):
                 func=self.select_song,
                 row=i,
                 tags=tags,
-                # image=song_tags.get("APIC"),
                 active_songs=self.selected_songs,
                 song_path=file_path,
-                # ).grid(row=i, column=0, sticky="nsew")
             ).pack(fill="both")
 
     def draw_research_frame(self):
@@ -608,16 +658,28 @@ class App(customtkinter.CTk):
             self.refresh_scroll_frame()
             # event.widget.configure(fg_color=customtkinter.ThemeManager.theme["CTkButton"]["fg_color"])
 
+        def filter_header(event):
+            self.filter = event.widget.get()
+            self.refresh_scroll_frame()
+
         for col, label_text in enumerate(labels):
             l = customtkinter.CTkLabel(
                 master=frame,
                 text=label_text,
                 width=100 if not label_text == "Cover" else 50,
             )
-            l.grid(row=0, column=col, padx=5, pady=5)
+            # l.grid(row=0, column=col, padx=5, pady=5)
+            l.pack(side="left", padx=5, pady=5, expand="true")
             l.bind(
                 "<Button-1>", lambda event, t=label_text: sort_header(event, t.lower())
             )
+            e = customtkinter.CTkEntry(
+                master=frame, width=100 if not label_text == "Cover" else 50
+            )
+            # e.grid(row=1, column=col, padx=5, pady=5)
+            # e.pack(side="bottom", padx=5, pady=5)
+
+            e.bind("<Return>", lambda event: filter_header(event))
         return frame
 
     def select_frame_by_name(self, name):
@@ -774,7 +836,7 @@ class App(customtkinter.CTk):
             if apic_frames:
                 image = customtkinter.CTkImage(
                     Image.open(BytesIO(apic_frames.data)),
-                    size=(300, 300),
+                    size=(250, 250),
                 )
 
             for label, frame in self.frames.items():
